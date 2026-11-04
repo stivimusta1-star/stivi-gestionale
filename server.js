@@ -4,6 +4,9 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server avviato sulla porta ${PORT}`);
+});
 const DATA_FILE = path.join(__dirname, 'data.json');
 
 app.use(express.json());
@@ -30,7 +33,10 @@ app.post('/api/state', (req, res) => {
     });
 });
 
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
+  console.log(`Server avviato sulla porta ${PORT}`);
+});
     console.log(`Server gestionale in ascolto sulla porta ${PORT}`);
 });
 const MENU_V = 2;
