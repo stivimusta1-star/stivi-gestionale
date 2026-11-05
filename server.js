@@ -7,7 +7,19 @@ const DATA_FILE = path.join(__dirname, 'data.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
+app.get('/api/state', (req, res) => {
+  if (!fs.existsSync(DATA_FILE)) {
+    return res.json({ tavoli: [], prodotti: [], prenotazioni: [] });
+  }
+  fs.readFile(DATA_FILE, 'utf8', (err, data) => {
+    if (err) return res.status(500).json({ error: 'Errore lettura dati' });
+    try {
+      res.json(JSON.parse(data));
+    } catch (e) {
+      res.json({ tavoli: [], prodotti: [], prenotazioni: [] });
+    }
+  });
+});
 app.get('/api/state', (req, res) => {
   if (!fs.existsSync(DATA_FILE)) {
     return res.json({});
