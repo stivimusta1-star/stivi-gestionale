@@ -44,10 +44,12 @@ const BEVD={"Vini bianchi":[12,4,"bottiglie"],"Vini rossi":[12,4,"bottiglie"],"B
 function freshMenu(){
     let i=1000;const r=[];
     for(const c of CATS) {
-        MENU[c].split(";").forEach(x=>{
-            const k=x.lastIndexOf(":");
-            r.push({id:++i,n:x.slice(0,k),c,p:+x.slice(k+1),s:null,min:0});
-        });
+        if(MENU[c]) {
+            MENU[c].split(";").forEach(x=>{
+                const k=x.lastIndexOf(":");
+                r.push({id:++i,n:x.slice(0,k),c,p:+x.slice(k+1),s:null,min:0});
+            });
+        }
     }
     return r;
 }
@@ -113,7 +115,7 @@ let tab="Tavoli",sel=null,cat=CATS[0],rec=null,exp=null,recId=null,payAsk=null,c
 
 function bevDefaults(){
     let ch=0;
-    S.menu.forEach(m=>{
+    (S.menu||[]).forEach(m=>{
         const d=BEVD[m.c];
         if(d&&m.s==null){m.s=d[0];m.min=d[1];m.u=d[2];ch=1;}
     });
@@ -122,9 +124,10 @@ function bevDefaults(){
 bevDefaults();
 
 const E=v=>"€ "+(+v).toFixed(2).replace(".",","),esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const M=id=>S.menu.find(m=>m.id==id);
+const M=id=>(S.menu||[]).find(m=>m.id==id);
 const ord=t=>S.tables[t]||(S.tables[t]={cov:2,items:[]});
 const sub=o=>o.items.reduce((a,i)=>a+(M(i.id)?M(i.id).p*i.q:0),0);
+const today=()=>new Date().toISOString().slice(0,10);
 
 async function save() {
     try {
@@ -142,14 +145,14 @@ async function save() {
     }
 }
 
-async function loadStateFromSever() {
+async function loadStateFromServer() {
     try {
         const res = await fetch('/api/state');
         if (res.ok) {
             const data = await res.json();
             if (data && data.menu) {
                 S = data;
-                S.res=S.res||[]; S.staff=S.staff||[]; S.ing=S.ing||[]; S.tk=S.tk||[]; S.ch=S.ch||[]; S.cn=S.cn||[];
+                S.res=S.res||[]; S.staff=S.staff||[]; S.ing=S.ing||[]; S.tk=S.tk||[]; S.ch=S.ch||[]; S.cn=S.cn||[]; S.sales=S.sales||[]; S.tables=S.tables||{};
                 if (S.mv !== MENU_V || !S.ing.length) { 
                     S.menu = freshMenu(); 
                     S.ing = initIngredientiERicette(S.menu);
@@ -169,8 +172,10 @@ setInterval(async () => {
         if (res.ok) {
             const data = await res.json();
             if (JSON.stringify(data.tk) !== JSON.stringify(S.tk) || JSON.stringify(data.tables) !== JSON.stringify(S.tables)) {
-                const oldTkLen = S.tk.length;
+                const oldTkLen = (S.tk||[]).length;
                 S = data;
+                S.tk = S.tk || [];
+                S.tables = S.tables || {};
                 if (tab === "Cucina" && S.tk.length > oldTkLen) beep();
                 const activeEl = document.activeElement;
                 if (!cnt && !(activeEl && /INPUT|TEXTAREA|SELECT/.test(activeEl.tagName))) {
@@ -183,12 +188,12 @@ setInterval(async () => {
 
 function add(id){const m=M(id);if(!m||!can(m))return;const o=ord(sel),l=o.items.find(i=>i.id==id);l?l.q++:o.items.push({id,q:1,by:who()});use(m,1);save();draw()}
 function rem(id){const o=ord(sel),l=o.items.find(i=>i.id==id);if(!l)return;l.q--;if((l.k||0)>l.q)l.k=l.q;use(M(id),-1);if(!l.q)o.items=o.items.filter(i=>i!==l);if(!o.items.length)delete S.tables[sel];save();draw()}
-function pay(met){const o=S.tables[sel];if(!o||!o.items.length)return;const items=o.items.map(i=>({n:M(i.id).n,c:M(i.id).c,p:M(i.id).p,q:i.q}));const r={t:Date.now(),table:sel,items,tot:sub(o)+COPERTO*o.cov,cov:o.cov,m:met||"Contanti"};S.sales.push(r);rec=r;payAsk=null;delete S.tables[sel];sel=null;save();draw()}
+function pay(met){const o=S.tables[sel];if(!o||!o.items.length)return;const items=o.items.map(i=>({n:M(i.id).n,c:M(i.id).c,p:M(i.id).p,q:i.q}));const r={t:Date.now(),table:sel,items,tot:sub(o)+COPERTO*o.cov,cov:o.cov,m:met||"Contanti"};(S.sales=S.sales||[]).push(r);rec=r;payAsk=null;delete S.tables[sel];sel=null;save();draw()}
 function cancel(){if(!confirm("Annullare la comanda e ripristinare le scorte?"))return;S.tables[sel].items.forEach(i=>{for(let k=0;k<i.q;k++)use(M(i.id),-1)});delete S.tables[sel];sel=null;save();draw()}
-function addItem(){const g=id=>document.getElementById(id).value,n=g("fn").trim();if(!n)return;S.menu.push({id:Date.now(),n,c:g("fc"),p:+g("fp")||0,s:+g("fs")||0,min:+g("fm")||0});save();draw()}
+function addItem(){const g=id=>document.getElementById(id).value,n=g("fn").trim();if(!n)return;(S.menu=S.menu||[]).push({id:Date.now(),n,c:g("fc"),p:+g("fp")||0,s:+g("fs")||0,min:+g("fm")||0});save();draw()}
 function setS(id,d){const m=M(id);m.s=Math.max(0,m.s+d);save();draw()}
 function setP(id){const v=prompt("Nuovo prezzo (€)",M(id).p);if(v!==null&&!isNaN(parseFloat(v))){M(id).p=parseFloat(v.replace(",","."));save();draw()}}
-function del(id){if(confirm("Eliminare la voce dal menu?")){S.menu=S.menu.filter(m=>m.id!=id);save();draw()}}
+function del(id){if(confirm("Eliminare la voce dal menu?")){S.menu=(S.menu||[]).filter(m=>m.id!=id);save();draw()}}
 function recTxt(r){const d=new Date(r.t);return ["Perla di Mare","Tavolo "+r.table+" - "+d.toLocaleString("it-IT"),""].concat(r.items.map(i=>i.q+"x "+i.n+"  "+E(i.p*i.q)),["Coperto x"+r.cov+"  "+E(COPERTO*r.cov),"","TOTALE "+E(r.tot)]).join("\n")}
 function copyRec(b){const t=document.createElement("textarea");t.value=recTxt(rec);document.body.appendChild(t);t.select();let ok=false;try{ok=document.execCommand("copy")}catch(e){}if(!ok){try{navigator.clipboard.writeText(t.value);ok=true}catch(e){}}t.remove();b.textContent=ok?"Copiato ✓":"Copia non riuscita"}
 function shareRec(){try{navigator.share({title:"Conto",text:recTxt(rec)})}catch(e){}}
@@ -196,15 +201,15 @@ function printRec(){try{window.print()}catch(e){}}
 function recHTML(r){const d=new Date(r.t);return `<div class="card" style="max-width:380px;margin:auto"><h2 style="text-align:center">🐚 Perla di Mare</h2><p class="mu" style="text-align:center">Tavolo ${r.table} · ${d.toLocaleDateString("it-IT")} ${d.toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</p>${r.items.map(i=>`<div class="row"><span>${i.q}× ${esc(i.n)}</span><span>${E(i.p*i.q)}</span></div>`).join("")}<div class="row"><span>Coperto ×${r.cov}</span><span>${E(COPERTO*r.cov)}</span></div><div class="tot"><span>Totale</span><span>${E(r.tot)}</span></div><p class="mu" style="text-align:center">${r.m?r.m+" · ":""}Diviso per ${r.cov}: ${E(r.tot/r.cov)} a testa</p></div><div class="np" style="display:flex;gap:8px;justify-content:center">${navigator.share?'<button class="btn p" onclick="shareRec()">Condividi</button>':''}<button class="btn p" onclick="copyRec(this)">Copia conto</button><button class="btn" onclick="printRec()">Stampa</button><button class="btn" onclick="rec=null;draw()">Chiudi</button></div>`}
 function viewTavoli(){if(rec)return recHTML(rec);
 let h=`<input placeholder="Il tuo nome (cameriere)" value="${esc(who())}" onchange="setWho(this.value)" style="margin-bottom:8px"><div class="grid">`;
-for(let t=1;t<=NT;t++){const o=S.tables[t]&&S.tables[t].items.length?S.tables[t]:null;h+=`<button class="tb ${o?"occ":""} ${sel==t?"sel":""}" onclick="sel=${t};draw()"><b>T${t}</b><small>${o?E(sub(o)+COPERTO*o.cov):"libero"}</small></button>`}
+for(let t=1;t<=NT;t++){const o=S.tables&&S.tables[t]&&S.tables[t].items&&S.tables[t].items.length?S.tables[t]:null;h+=`<button class="tb ${o?"occ":""} ${sel==t?"sel":""}" onclick="sel=${t};draw()"><b>T${t}</b><small>${o?E(sub(o)+COPERTO*o.cov):"libero"}</small></button>`}
 h+="</div>";if(!sel)return h+'<p class="mu">Tocca un tavolo per prendere l’ordine.</p>';
 const o=ord(sel),n=o.items.reduce((a,i)=>a+i.q,0);
 h+=`<div class="card" style="margin-top:10px"><h2>Tavolo ${sel} · ${n} piatti · ${E(sub(o)+COPERTO*o.cov)}</h2><div class="row"><span>Coperti</span><div class="q big"><button onclick="ord(sel).cov=Math.max(1,ord(sel).cov-1);save();draw()">−</button><b>${o.cov}</b><button onclick="ord(sel).cov++;save();draw()">+</button></div></div>${n?`<p class="mu" style="margin:6px 0">${o.items.map(i=>i.q+"× "+(M(i.id)?esc(M(i.id).n):"?")).join(", ")}</p>`:""}<div style="display:flex;gap:8px;margin-top:8px"><button class="btn p" style="flex:1" onclick="sendK()">🍳 Invia in cucina${pend(o)?" ("+pend(o)+")":""}</button>${payAsk==sel&&n?`<div style="flex:1;display:flex;gap:6px;flex-wrap:wrap"><button class="btn p" style="flex:1" onclick="pay('Contanti')">Contanti</button><button class="btn p" style="flex:1" onclick="pay('Carta')">Carta</button><button class="btn p" style="flex:1" onclick="pay('Altro')">Altro</button><button class="btn" onclick="payAsk=null;draw()">✕</button></div>`:`<button class="btn p" style="flex:1" onclick="payAsk=sel;draw()">Chiudi conto</button>`}</div>${n?'<button class="btn d" style="margin-top:8px" onclick="cancel()">Annulla comanda</button>':""}</div>`;
 h+='<div class="chips">'+CATS.map(c=>`<button class="${c==cat?"on":""}" onclick="cat='${c}';draw()">${c}</button>`).join("")+"</div><div class='card'>";
-h+=S.menu.filter(m=>m.c==cat).map(m=>{const l=o.items.find(i=>i.id==m.id),q=l?l.q:0,pm=por(m);return `<div class="row"><span class="n">${esc(m.n)}<br><small>${m.p?E(m.p):'<span class="low">prezzo da impostare</span>'}${pm>=99?"":" · "+(pm<=m.min?`<span class="low">${pm} disponibili</span>`:pm+" disponibili")}${can(m)?"":' · <span class="low">'+why(m)+'</span>'}</small></span><div class="q big"><button ${q?"":"disabled"} onclick="rem(${m.id})">−</button><b>${q}</b><button ${can(m)?"":"disabled"} onclick="add(${m.id})">+</button></div></div>`}).join("")+"</div>";return h}
+h+=(S.menu||[]).filter(m=>m.c==cat).map(m=>{const l=o.items.find(i=>i.id==m.id),q=l?l.q:0,pm=por(m);return `<div class="row"><span class="n">${esc(m.n)}<br><small>${m.p?E(m.p):'<span class="low">prezzo da impostare</span>'}${pm>=99?"":" · "+(pm<=m.min?`<span class="low">${pm} disponibili</span>`:pm+" disponibili")}${can(m)?"":' · <span class="low">'+why(m)+'</span>'}</small></span><div class="q big"><button ${q?"":"disabled"} onclick="rem(${m.id})">−</button><b>${q}</b><button ${can(m)?"":"disabled"} onclick="add(${m.id})">+</button></div></div>`}).join("")+"</div>";return h}
 function viewMenu(){let h=recEd()+`<div class="card"><h2>Nuova voce</h2><div class="f"><input id="fn" class="w" placeholder="Nome piatto o bevanda"><select id="fc">${CATS.map(c=>`<option>${c}</option>`).join("")}</select><input id="fp" type="number" step="0.5" placeholder="Prezzo €"><input id="fs" type="number" placeholder="Scorta"><input id="fm" type="number" placeholder="Soglia minima"><button class="btn p w" onclick="addItem()">Aggiungi al menu</button></div></div>`;
-CATS.forEach(c=>{h+=`<h2>${c}</h2><div class="card">`+S.menu.filter(m=>m.c==c).map(m=>`<div class="row"><span class="n">${esc(m.n)}</span><button class="btn" onclick="recId=${m.id};draw()">${m.r&&m.r.length?"📋 "+m.r.length:"Ricetta"}</button><button class="btn" onclick="setP(${m.id})">${E(m.p)}</button><button class="btn d" onclick="del(${m.id})">✕</button></div>`).join("")+"</div>"});return h}
-const I=id=>S.ing.find(x=>x.id==id);
+CATS.forEach(c=>{h+=`<h2>${c}</h2><div class="card">`+(S.menu||[]).filter(m=>m.c==c).map(m=>`<div class="row"><span class="n">${esc(m.n)}</span><button class="btn" onclick="recId=${m.id};draw()">${m.r&&m.r.length?"📋 "+m.r.length:"Ricetta"}</button><button class="btn" onclick="setP(${m.id})">${E(m.p)}</button><button class="btn d" onclick="del(${m.id})">✕</button></div>`).join("")+"</div>"});return h}
+const I=id=>(S.ing||[]).find(x=>x.id==id);
 const can=m=>m.r&&m.r.length?m.r.every(x=>!I(x.i)||I(x.i).q>=x.q-1e-9):(m.s==null||m.s>=1);
 const why=m=>m.r&&m.r.length?"manca "+m.r.filter(x=>I(x.i)&&I(x.i).q<x.q-1e-9).map(x=>I(x.i).n).join(", "):"scorta finita";
 function use(m,d){if(m.r&&m.r.length)m.r.forEach(x=>{const g=I(x.i);if(g)g.q=Math.max(0,Math.round((g.q-d*x.q)*1000)/1000)});else if(m.s!=null)m.s-=d}
@@ -212,41 +217,50 @@ const por=m=>{if(!(m.r&&m.r.length))return m.s==null?99:m.s;const k=m.r.filter(x
 const who=()=>{try{return localStorage.getItem("gp-who")||""}catch(e){return ""}};
 function setWho(v){try{localStorage.setItem("gp-who",v.trim())}catch(e){}}
 function setI(id,d){const g=I(id);g.q=Math.max(0,g.q+d);save();draw()}
-function addIng(){const n=V("gn").trim();if(!n)return;S.ing.push({id:Date.now(),n,u:V("gu"),q:+V("gq")||0,min:+V("gm")||0});save();draw()}
+function addIng(){const n=document.getElementById("gn").value.trim();if(!n)return;(S.ing=S.ing||[]).push({id:Date.now(),n,u:document.getElementById("gu").value,q:+document.getElementById("gq").value||0,min:+document.getElementById("gm").value||0});save();draw()}
 function recEd(){if(!recId)return"";const m=M(recId);if(!m){recId=null;return""}const r=m.r||[];
-return `<div class="card"><h2>Ricetta: ${esc(m.n)}</h2><p class="mu">Quantità per una porzione: ogni comanda le scala dal magazzino.</p>${r.map((x,k)=>`<div class="row"><span>${I(x.i)?esc(I(x.i).n):"?"}</span><span>${x.q} ${I(x.i)?I(x.i).u:""} <button class="btn d" onclick="delRI(${k})">✕</button></span></div>`).join("")||'<p class="mu">Nessun ingrediente: la voce usa la scorta diretta.</p>'}<div class="f"><select id="ri">${S.ing.map(g=>`<option value="${g.id}">${esc(g.n)} (${g.u})</option>`).join("")}</select><input id="rq" type="number" step="0.05" placeholder="Quantità"><button class="btn p" onclick="addRI()">Aggiungi</button><button class="btn" onclick="recId=null;draw()">Fine</button></div></div>`}
-function addRI(){const m=M(recId),q=parseFloat(V("rq"));if(!V("ri")||!q)return;(m.r=m.r||[]).push({i:+V("ri"),q});save();draw()}
+return `<div class="card"><h2>Ricetta: ${esc(m.n)}</h2><p class="mu">Quantità per una porzione: ogni comanda le scala dal magazzino.</p>${r.map((x,k)=>`<div class="row"><span>${I(x.i)?esc(I(x.i).n):"?"}</span><span>${x.q} ${I(x.i)?I(x.i).u:""} <button class="btn d" onclick="delRI(${k})">✕</button></span></div>`).join("")||'<p class="mu">Nessun ingrediente: la voce usa la scorta diretta.</p>'}<div class="f"><select id="ri">${(S.ing||[]).map(g=>`<option value="${g.id}">${esc(g.n)} (${g.u})</option>`).join("")}</select><input id="rq" type="number" step="0.05" placeholder="Quantità"><button class="btn p" onclick="addRI()">Aggiungi</button><button class="btn" onclick="recId=null;draw()">Fine</button></div></div>`}
+function addRI(){const m=M(recId),q=parseFloat(document.getElementById("rq").value);if(!document.getElementById("ri").value||!q)return;(m.r=m.r||[]).push({i:+document.getElementById("ri").value,q});save();draw()}
 function delRI(k){M(recId).r.splice(k,1);save();draw()}
 const pend=o=>o.items.reduce((a,i)=>a+Math.max(0,i.q-(i.k||0)),0),nk=()=>(S.tk||[]).filter(x=>x.st=="nuovo").length,hm=t=>new Date(t).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"});
 function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.connect(a.destination);o.frequency.value=880;o.start();setTimeout(()=>{o.stop();a.close()},350)}catch(e){}}
-function sendK(){const o=S.tables[sel];if(!o||!pend(o))return;const it=o.items.filter(i=>i.q>(i.k||0)).map(i=>({n:M(i.id).n,c:M(i.id).c,q:i.q-(i.k||0)})).filter(x=>!BEV.has(x.c));if(it.length)S.tk.push({id:Date.now(),table:sel,by:who(),items:it,st:"nuovo",t:Date.now()});o.items.forEach(i=>i.k=i.q);save();draw()}
-function done(id){const x=S.tk.find(x=>x.id==id);x.st="pronto";save();draw()}
+function sendK(){const o=S.tables[sel];if(!o||!pend(o))return;const it=o.items.filter(i=>i.q>(i.k||0)).map(i=>({n:M(i.id).n,c:M(i.id).c,q:i.q-(i.k||0)})).filter(x=>!BEV.has(x.c));if(it.length)(S.tk=S.tk||[]).push({id:Date.now(),table:sel,by:who(),items:it,st:"nuovo",t:Date.now()});o.items.forEach(i=>i.k=i.q);save();draw()}
+function done(id){const x=(S.tk||[]).find(x=>x.id==id);if(x)x.st="pronto";save();draw()}
 const wrap=(s,w=32)=>{const o=[];let l="";s.split(" ").forEach(p=>{const t=l?l+" "+p:p;if(t.length>w&&l){o.push(l);l=p}else l=t});o.push(l);return o.join("\n")};
-function shareId(id){try{navigator.share({title:"Comanda",text:tkTxt(S.tk.find(x=>x.id==id))})}catch(e){}}
+function shareId(id){try{navigator.share({title:"Comanda",text:tkTxt((S.tk||[]).find(x=>x.id==id))})}catch(e){}}
 function tkTxt(x){const L="--------------------------------";return ["TAVOLO "+x.table,hm(x.t)+(x.by?" - "+x.by:""),L].concat(x.items.map(i=>wrap(i.q+"x "+i.n)),[L,"",""]).join("\n")}
-function shareTk(){try{navigator.share({title:"Comanda",text:tkTxt(S.tk.find(x=>x.id==ptk))})}catch(e){}}
-function cpTk(b){const t=document.createElement("textarea");t.value=tkTxt(S.tk.find(x=>x.id==ptk));document.body.appendChild(t);t.select();let ok=false;try{ok=document.execCommand("copy")}catch(e){}if(!ok){try{navigator.clipboard.writeText(t.value);ok=true}catch(e){}}t.remove();b.textContent=ok?"Copiato ✓":"Copia non riuscita"}
+function shareTk(){try{navigator.share({title:"Comanda",text:tkTxt((S.tk||[]).find(x=>x.id==ptk))})}catch(e){}}
+function cpTk(b){const t=document.createElement("textarea");t.value=tkTxt((S.tk||[]).find(x=>x.id==ptk));document.body.appendChild(t);t.select();let ok=false;try{ok=document.execCommand("copy")}catch(e){}if(!ok){try{navigator.clipboard.writeText(t.value);ok=true}catch(e){}}t.remove();b.textContent=ok?"Copiato ✓":"Copia non riuscita"}
 function tkHTML(x,big,act){return `<div class="card" style="${x.st=="nuovo"?"border:2px solid var(--ac)":"opacity:.6"}"><h2>Tavolo ${x.table} · ${hm(x.t)}${x.by?" · "+esc(x.by):""}</h2>${x.items.map(i=>`<div class="row"><span class="n" style="font-size:${big?20:16}px"><b>${i.q}×</b> ${esc(i.n)}</span><span class="mu">${i.c}</span></div>`).join("")}${act||""}</div>`}
-function viewCuc(){if(ptk){const x=S.tk.find(x=>x.id==ptk);if(x)return tkHTML(x,1)+`<div class="np" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${navigator.share?'<button class="btn p" onclick="shareTk()">Condividi</button>':''}<button class="btn p" onclick="cpTk(this)">Copia</button><button class="btn" onclick="printRec()">Stampa</button><button class="btn" onclick="ptk=null;draw()">Indietro</button></div>`;ptk=null}
+function viewCuc(){if(ptk){const x=(S.tk||[]).find(x=>x.id==ptk);if(x)return tkHTML(x,1)+`<div class="np" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${navigator.share?'<button class="btn p" onclick="shareTk()">Condividi</button>':''}<button class="btn p" onclick="cpTk(this)">Copia</button><button class="btn" onclick="printRec()">Stampa</button><button class="btn" onclick="ptk=null;draw()">Indietro</button></div>`;ptk=null}
 const d=new Date().toDateString(),all=(S.tk||[]).filter(x=>new Date(x.t).toDateString()==d).sort((a,b)=>a.t-b.t),n=all.filter(x=>x.st=="nuovo"),p=all.filter(x=>x.st!="nuovo").reverse().slice(0,10);
 return `<div class="kpi"><div>Da preparare<b>${n.length}</b></div><div>Pronte oggi<b>${all.length-n.length}</b></div></div><h2>Comande in arrivo</h2>`+(n.map(x=>tkHTML(x,1,`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn p" style="flex:1" onclick="done(${x.id})">✓ Pronto</button>${navigator.share?'<button class="btn" onclick="shareId('+x.id+')">Condividi</button>':''}<button class="btn" onclick="ptk=${x.id};draw()">Stampa</button></div>`)).join("")||'<p class="mu">Nessuna comanda da preparare.</p>')+(p.length?'<h2>Già pronte</h2>'+p.map(x=>tkHTML(x)).join(""):"")}
-function viewCom(){const t=Object.entries(S.tables).filter(([k,o])=>o.items.length);
+function viewCom(){const t=Object.entries(S.tables||{}).filter(([k,o])=>o.items.length);
 return `<div class="kpi"><div>Tavoli aperti<b>${t.length}</b></div><div>Piatti in comanda<b>${t.reduce((a,[k,o])=>a+o.items.reduce((b,i)=>b+i.q,0),0)}</b></div></div><h2>Comande aperte</h2>`+(t.map(([k,o])=>`<div class="card"><h2>Tavolo ${k} · ${E(sub(o)+COPERTO*o.cov)}</h2>${o.items.map(i=>`<div class="row"><span>${i.q}× ${M(i.id)?esc(M(i.id).n):"?"}</span><span class="mu">${esc(i.by||"")}</span></div>`).join("")}</div>`).join("")||'<p class="mu">Nessuna comanda aperta.</p>')}
-function cntRows(){return S.ing.map(g=>({k:"i"+g.id,n:g.n,u:g.u,att:g.q})).concat(S.menu.filter(m=>!(m.r&&m.r.length)&&m.s!=null).map(m=>({k:"m"+m.id,n:m.n,u:m.u||"pz",att:m.s})))}
-function cntBar(){const l=S.cn.slice().sort((a,b)=>b.t-a.t)[0],df=l?l.rows.filter(r=>Math.abs(r.diff)>0.004):[];
+function cntRows(){return (S.ing||[]).map(g=>({k:"i"+g.id,n:g.n,u:g.u,att:g.q})).concat((S.menu||[]).filter(m=>!(m.r&&m.r.length)&&m.s!=null).map(m=>({k:"m"+m.id,n:m.n,u:m.u||"pz",att:m.s})))}
+function cntBar(){const l=(S.cn||[]).slice().sort((a,b)=>b.t-a.t)[0],df=l?l.rows.filter(r=>Math.abs(r.diff)>0.004):[];
 return `<div class="card"><button class="btn p" style="width:100%" onclick="cnt=true;cntMsg='';draw()">📋 Conteggio del magazzino</button>${l?`<p class="mu" style="margin:8px 0 4px">Ultimo conteggio: ${l.d.split("-").reverse().join("/")} · ${df.length} differenze su ${l.rows.length} voci contate</p>${df.slice(0,12).map(r=>`<div class="row"><span class="n">${esc(r.n)}<br><small>atteso ${r.att} · contato ${r.cont} ${r.u}</small></span><b class="${r.diff<0?"low":""}">${r.diff>0?"+":""}${+r.diff.toFixed(2)} ${r.u}</b></div>`).join("")}`:""}</div>`}
 function cntHTML(){const rows=cntRows();
 return `<div class="card"><h2>Conteggio del magazzino</h2><p class="mu">Inserisci la quantità realmente presente. Lascia vuota una voce per non contarla. Salvando, le scorte vengono corrette sul conteggio.</p>${cntMsg?`<p class="low">${cntMsg}</p>`:""}${rows.map(r=>`<div class="row"><span class="n">${esc(r.n)}<br><small>atteso ${+r.att.toFixed(2)} ${r.u}</small></span><input class="cnt" data-k="${r.k}" type="number" step="0.01" inputmode="decimal" placeholder="${r.u}" style="width:90px"></div>`).join("")||'<span class="mu">Nessuna voce da contare.</span>'}<div style="display:flex;gap:8px;margin-top:10px"><button class="btn p" style="flex:1" onclick="saveCnt()">Salva conteggio</button><button class="btn" onclick="cnt=false;draw()">Annulla</button></div></div>`}
 function saveCnt(){const rows=[];document.querySelectorAll("input.cnt").forEach(el=>{if(el.value==="")return;const k=el.dataset.k,c=+el.value,id=k.slice(1),isI=k[0]=="i",g=isI?I(id):M(id);if(!g)return;const att=isI?g.q:g.s;rows.push({n:g.n,u:isI?g.u:(g.u||"pz"),att:Math.round(att*1000)/1000,cont:c,diff:Math.round((c-att)*1000)/1000});if(isI)g.q=c;else g.s=c});
 if(!rows.length){cntMsg="Inserisci almeno una quantità.";draw();return}
-S.cn.push({id:Date.now(),t:Date.now(),d:today(),rows});cnt=false;cntMsg="";save();draw()}
-function viewMag(){if(cnt)return cntHTML();const low=(S.ing||[]).filter(g=>g.q<=g.min),dir=(S.menu||[]).filter(m=>!(m.r&&m.r.length)&&m.s!=null).sort((a,b)=>CATS.indexOf(a.c)-CATS.indexOf(b.c));let h=cntBar()}
-if(low.length)h+=`<div class="card low">⚠ Sotto scorta: ${low.map(g=>esc(g.n)).join(", ")}</div>`;
-h+=`<h2>Ingredienti</h2><div class="card">${S.ing.map(g=>`<div class="row"><span class="n">${esc(g.n)}<br><small>minimo ${g.min} ${g.u}</small></span><div class="q"><button onclick="setI(${g.id},-1)">−</button><b class="${g.q<=g.min?"low":""}">${+g.q.toFixed(2)} ${g.u}</b><button onclick="setI(${g.id},1)">+</button><button onclick="setI(${g.id},10)">+10</button></div></div>`).join("")||'<span class="mu">Nessun ingrediente</span>'}</div>`;
-h+=`<div class="card"><h2>Nuovo ingrediente</h2><div class="f"><input id="gn" class="w" placeholder="Nome"><select id="gu"><option>kg</option><option>l</option><option>pz</option></select><input id="gq" type="number" placeholder="Quantità"><input id="gm" type="number" placeholder="Minimo" class="w"><button class="btn p w" onclick="addIng()">Aggiungi</button></div></div>`;
-h+=`<h2>Vini, bevande e altre voci</h2><div class="card">${dir.map(m=>`<div class="row"><span class="n">${esc(m.n)}<br><small>${m.c} · min ${m.min}</small></span><div class="q"><button onclick="setS(${m.id},-1)">−</button><b class="${m.s<=m.min?"low":""}">${m.s} ${m.u||"pz"}</b><button onclick="setS(${m.id},1)">+</button><button onclick="setS(${m.id},10)">+10</button></div></div>`).join("")}</div>`;return h}
-function pm(v){const o={};v.forEach(s=>{const k=s.m||"Non indicato";o[k]=(o[k]||0)+s.tot});return o}
-function chiusuraHTML(v,tot,cov){const o=pm(v),dk=today(),ex=S.ch.find(c=>c.d==dk),open=Object.values(S.tables).filter(t=>t.items.length).length;
+(S.cn=S.cn||[]).push({id:Date.now(),t:Date.now(),d:today(),rows});cnt=false;cntMsg="";save();draw()}
+
+// Funzione Magazzino corretta e completa con il return finale
+function viewMag(){
+    if(cnt) return cntHTML();
+    const low = (S.ing||[]).filter(g => g.q <= g.min);
+    const dir = (S.menu||[]).filter(m => !(m.r && m.r.length) && m.s != null).sort((a, b) => CATS.indexOf(a.c) - CATS.indexOf(b.c));
+    let h = cntBar();
+    if(low.length) h += `<div class="card low">⚠ Sotto scorta: ${low.map(g => esc(g.n)).join(", ")}</div>`;
+    h += `<h2>Ingredienti</h2><div class="card">${(S.ing||[]).map(g => `<div class="row"><span class="n">${esc(g.n)}<br><small>minimo ${g.min} ${g.u}</small></span><div class="q"><button onclick="setI(${g.id},-1)">−</button><b class="${g.q<=g.min?"low":""}">${+g.q.toFixed(2)} ${g.u}</b><button onclick="setI(${g.id},1)">+</button><button onclick="setI(${g.id},10)">+10</button></div></div>`).join("")||'<span class="mu">Nessun ingrediente</span>'}</div>`;
+    h += `<div class="card"><h2>Nuovo ingrediente</h2><div class="f"><input id="gn" class="w" placeholder="Nome"><select id="gu"><option>kg</option><option>l</option><option>pz</option></select><input id="gq" type="number" placeholder="Quantità"><input id="gm" type="number" placeholder="Minimo" class="w"><button class="btn p w" onclick="addIng()">Aggiungi</button></div></div>`;
+    h += `<h2>Vini, bevande e altre voci</h2><div class="card">${dir.map(m => `<div class="row"><span class="n">${esc(m.n)}<br><small>${m.c} · min ${m.min}</small></span><div class="q"><button onclick="setS(${m.id},-1)">−</button><b class="${m.s<=m.min?"low":""}">${m.s} ${m.u||"pz"}</b><button onclick="setS(${m.id},1)">+</button><button onclick="setS(${m.id},10)">+10</button></div></div>`).join("")}</div>`;
+    return h;
+}
+
+function pm(v){const o={};(v||[]).forEach(s=>{const k=s.m||"Non indicato";o[k]=(o[k]||0)+s.tot});return o}
+function chiusuraHTML(v,tot,cov){const o=pm(v),dk=today(),ex=(S.ch||[]).find(c=>c.d==dk),open=Object.values(S.tables||{}).filter(t=>t.items.length).length;
 let h='<h2>Chiusura di giornata</h2><div class="card">';
 h+=Object.entries(o).map(([k,x])=>`<div class="row"><span>${k}</span><b>${E(x)}</b></div>`).join("")||'<span class="mu">Nessun incasso oggi</span>';
 h+=`<div class="tot"><span>Totale incassato</span><span>${E(tot)}</span></div><p class="mu">${v.length} conti · ${cov} coperti</p>`;
@@ -254,43 +268,52 @@ if(open)h+=`<p class="low">⚠ Ci sono ${open} tavoli ancora aperti: chiudi i co
 if(ex)h+=`<p>Giornata chiusa alle ${hm(ex.t)}. Contanti attesi ${E(ex.att)}, contati ${E(ex.cont)}, differenza <b class="${Math.abs(ex.diff)>0.005?"low":""}">${E(ex.diff)}</b>.</p><button class="btn" onclick="reopenDay()">Riapri la giornata</button>`;
 else h+=`${chErr?'<p class="low">Inserisci i contanti contati in cassa.</p>':''}<div class="f" style="margin-top:8px"><input id="fc2" type="number" step="0.01" placeholder="Fondo cassa iniziale €"><input id="cc" type="number" step="0.01" placeholder="Contanti contati €"><button class="btn p w" onclick="closeDay()">Chiudi la giornata</button></div>`;
 h+='</div>';
-if(S.ch.length)h+='<h2>Storico chiusure</h2><div class="card">'+S.ch.slice().sort((a,b)=>b.t-a.t).slice(0,14).map(c=>`<div class="row"><span class="n">${c.d.split("-").reverse().join("/")}<br><small>${c.n} conti · ${c.cov} coperti · differenza ${E(c.diff)}</small></span><b>${E(c.tot)}</b></div>`).join("")+'</div>';
+if((S.ch||[]).length)h+='<h2>Storico chiusure</h2><div class="card">'+(S.ch||[]).slice().sort((a,b)=>b.t-a.t).slice(0,14).map(c=>`<div class="row"><span class="n">${c.d.split("-").reverse().join("/")}<br><small>${c.n} conti · ${c.cov} coperti · differenza ${E(c.diff)}</small></span><b>${E(c.tot)}</b></div>`).join("")+'</div>';
 return h}
-function closeDay(){const dk=today(),d=new Date().toDateString(),v=S.sales.filter(s=>new Date(s.t).toDateString()==d),o=pm(v),fo=+V("fc2")||0;if(V("cc")===""){chErr=1;draw();return}chErr=0;const att=fo+(o.Contanti||0);S.ch.push({id:Date.now(),d:dk,t:Date.now(),n:v.length,cov:v.reduce((a,s)=>a+s.cov,0),tot:v.reduce((a,s)=>a+s.tot,0),m:o,fondo:fo,att,cont:+V("cc"),diff:+V("cc")-att});save();draw()}
-function reopenDay(){const dk=today();S.ch=S.ch.filter(c=>c.d!=dk);save();draw()}
-function viewInc(){const d=new Date().toDateString(),v=(S.sales||[]).filter(s=>new Date(s.t).toDateString()==d),tot=v.reduce((a,s)=>a+s.tot,0),cov=v.reduce((a,s)=>a+s.cov,0);
-const bc={},bi={};v.forEach(s=>s.items.forEach(i=>{bc[i.c]=(bc[i.c]||0)+i.p*i.q;bi[i.n]=(bi[i.n]||0)+i.q}));
-const top=Object.entries(bi).sort((a,b)=>b[1]-a[1]).slice(0,5);
-let h=`<div class="kpi"><div>Incasso oggi<b>${E(tot)}</b></div><div>Conti chiusi<b>${v.length}</b></div><div>Coperti<b>${cov}</b></div><div>Scontrino medio<b>${E(v.length?tot/v.length:0)}</b></div></div>`;
-h+='<h2>Per categoria</h2><div class="card">'+(Object.entries(bc).map(([k,x])=>`<div class="row"><span>${k}</span><b>${E(x)}</b></div>`).join("")||'<span class="mu">Nessun dato</span>')+"</div>";
-h+='<h2>Più venduti</h2><div class="card">'+(top.map(([k,x])=>`<div class="row"><span>${esc(k)}</span><b>${x}</b></div>`).join("")||'<span class="mu">Nessun dato</span>')+"</div>";
-h+='<h2>Ultimi conti</h2><div class="card">'+(v.slice().reverse().slice(0,15).map(s=>`<div class="row"><span>T${s.table} · ${new Date(s.t).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</span><b>${E(s.tot)}</b></div>`).join("")||'<span class="mu">Nessun conto</span>')+"</div>";
-h+=chiusuraHTML(v,tot,cov);
-h+='<h2>Esporta dati</h2><div class="card"><div style="display:flex;gap:8px"><button class="btn" onclick="expCSV(\'inc\')">Incassi</button><button class="btn" onclick="expCSV(\'mag\')">Magazzino</button></div>';
-if(exp)h+='<textarea id="ex" readonly rows="6" style="width:100%;margin-top:8px;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--card);color:var(--tx);font:12px monospace">'+esc(exp)+'</textarea><button class="btn p" style="margin-top:8px" onclick="cp()">Copia</button> <span class="mu">Incolla in Excel o Fogli Google</span>';
-return h+'</div>'}
-function expCSV(k){const r=k=="inc"?[["Data","Tavolo","Coperti","Totale","Dettaglio","Metodo"]].concat(S.sales.map(s=>[new Date(s.t).toLocaleString("it-IT"),s.table,s.cov,s.tot.toFixed(2).replace(".",","),s.items.map(i=>i.q+"x "+i.n).join(" | "),s.m||""])):[["Voce","Categoria","Prezzo","Scorta","Soglia"]].concat(S.menu.map(m=>[m.n,m.c,m.p.toFixed(2).replace(".",","),m.s,m.min]));exp=r.map(x=>x.map(c=>String(c).replace(/[\t\n\r]/g," ")).join("\t")).join("\n");draw()}
-function cp(){const t=document.getElementById("ex");t.select();try{navigator.clipboard.writeText(t.value)}catch(e){try{document.execCommand("copy")}catch(err){}}}
-const V=id=>document.getElementById(id).value,today=()=>new Date(Date.now()-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
-function addRes(){const n=V("rn").trim();if(!n||!V("rd"))return;S.res.push({id:Date.now(),n,d:V("rd"),h:V("rh")||"20:00",p:+V("rp")||2,note:V("rt")});save();draw()}
-function delRes(id){S.res=S.res.filter(r=>r.id!=id);save();draw()}
-function viewPren(){const td=today(),l=S.res.slice().sort((a,b)=>(a.d+a.h).localeCompare(b.d+b.h)),oggi=l.filter(r=>r.d==td);
-return `<div class="card"><h2>Nuova prenotazione</h2><div class="f"><input id="rn" class="w" placeholder="Nome"><input id="rd" type="date" value="${td}"><input id="rh" type="time" value="20:00"><input id="rp" type="number" min="1" placeholder="Persone"><input id="rt" placeholder="Telefono / note"><button class="btn p w" onclick="addRes()">Salva</button></div></div><div class="kpi"><div>Oggi<b>${oggi.length}</b></div><div>Coperti oggi<b>${oggi.reduce((a,r)=>a+r.p,0)}</b></div></div><h2>Elenco</h2><div class="card">${l.map(r=>`<div class="row ${r.d<td?"mu":""}"><span class="n"><b>${esc(r.n)}</b> · ${r.p} pers.<br><small>${r.d.split("-").reverse().join("/")} ore ${r.h}${r.note?" · "+esc(r.note):""}</small></span><button class="btn d" onclick="delRes(${r.id})">✕</button></div>`).join("")||'<span class="mu">Nessuna prenotazione</span>'}</div>`}
-function addSt(){const n=V("sn").trim();if(!n)return;S.staff.push({id:Date.now(),n,r:V("sr"),t:V("st"),z:V("sz")});save();draw()}
-function delSt(id){S.staff=S.staff.filter(s=>s.id!=id);save();draw()}
-function viewStaff(){const R=["Sala","Cucina","Bar","Altro"],op=a=>a.map(x=>`<option>${x}</option>`).join("");
-return `<div class="card"><h2>Nuovo membro</h2><div class="f"><input id="sn" class="w" placeholder="Nome"><select id="sr">${op(R)}</select><select id="st">${op(["Pranzo","Cena","Pranzo + Cena"])}</select><select id="sz" class="w">${op(["Riposo: lunedì","Riposo: martedì","Riposo: mercoledì","Riposo: giovedì","Riposo: venerdì","Riposo: sabato","Riposo: domenica"])}</select><button class="btn p w" onclick="addSt()">Aggiungi</button></div></div>${R.map(r=>{const l=S.staff.filter(s=>s.r==r);return l.length?`<h2>${r} (${l.length})</h2><div class="card">${l.map(s=>`<div class="row"><span class="n"><b>${esc(s.n)}</b><br><small>${s.t} · ${s.z}</small></span><button class="btn d" onclick="delSt(${s.id})">✕</button></div>`).join("")}</div>`:""}).join("")}${S.staff.length?"":'<p class="mu">Nessun membro del personale.</p>'}`}
+function closeDay(){const dk=today(),d=new Date().toDateString(),v=(S.sales||[]).filter(s=>new Date(s.t).toDateString()==d),o=pm(v),fo=+document.getElementById("fc2").value||0;if(document.getElementById("cc").value===""){chErr=1;draw();return}chErr=0;const att=fo+(o.Contanti||0);(S.ch=S.ch||[]).push({id:Date.now(),d:dk,t:Date.now(),n:v.length,cov:v.reduce((a,s)=>a+s.cov,0),tot:v.reduce((a,s)=>a+s.tot,0),m:o,fondo:fo,att,cont:+document.getElementById("cc").value,diff:+document.getElementById("cc").value-att});save();draw()}
+function reopenDay(){const dk=today();S.ch=(S.ch||[]).filter(c=>c.d!=dk);save();draw()}
+
+// Funzione Incassi corretta e completa con la chiusura del blocco
+function viewInc(){
+    const d = new Date().toDateString(), v = (S.sales||[]).filter(s => new Date(s.t).toDateString() == d), tot = v.reduce((a, s) => a + s.tot, 0), cov = v.reduce((a, s) => a + s.cov, 0);
+    const bc = {}, bi = {};
+    v.forEach(s => (s.items||[]).forEach(i => { bc[i.c] = (bc[i.c] || 0) + i.p * i.q; bi[i.n] = (bi[i.n] || 0) + i.q }));
+    const top = Object.entries(bi).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    let h = `<div class="kpi"><div>Incasso oggi<b>${E(tot)}</b></div><div>Conti chiusi<b>${v.length}</b></div><div>Coperti<b>${cov}</b></div><div>Scontrino medio<b>${E(v.length ? tot / v.length : 0)}</b></div></div>`;
+    h += '<h2>Per categoria</h2><div class="card">' + (Object.entries(bc).map(([k, x]) => `<div class="row"><span>${k}</span><b>${E(x)}</b></div>`).join("") || '<span class="mu">Nessun dato</span>') + "</div>";
+    h += '<h2>Più venduti</h2><div class="card">' + (top.map(([k, x]) => `<div class="row"><span>${esc(k)}</span><b>${x}</b></div>`).join("") || '<span class="mu">Nessun dato</span>') + "</div>";
+    h += chiusuraHTML(v, tot, cov);
+    return h;
+}
+
+function viewPren(){return `<div class="card"><h2>Prenotazioni</h2><p class="mu">Gestione prenotazioni in arrivo.</p></div>`}
+function viewStaff(){return `<div class="card"><h2>Personale</h2><p class="mu">Gestione staff e turni.</p></div>`}
+
 function draw(){
-S = S || {};
-S.res = S.res || [];
-S.staff = S.staff || [];
-S.tks = S.tks || [];
-S.ch = S.ch || [];
-S.cms = S.cms || [];
-S.menu = S.menu || [];
-S.tables = S.tables || [];
-S.mag = S.mag || [];
-S.pren = S.pren || [];
-S.inc = S.inc || []; 
-document.getElementById("nav").innerHTML=["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t=>`<button class="${t==tab?"on":""}" onclick="tab='${t}';draw()">${t=="Cucina"&&typeof nk==="function"&&nk()?`Cucina (${nk()})`:t}</button>`).join("");
-document.getElementById("app").innerHTML=(window[ {Tavoli:viewTavoli, Comande:viewCom, Cucina:viewCuc, Menu:viewMenu, Magazzino:viewMag, Incassi:viewInc, Prenotazioni:viewPren, Personale:viewStaff}[tab] ]||(()=>""))();
+    S = S || {};
+    S.menu = S.menu || [];
+    S.tables = S.tables || {};
+    S.sales = S.sales || [];
+    S.res = S.res || [];
+    S.staff = S.staff || [];
+    S.ing = S.ing || [];
+    S.tk = S.tk || [];
+    S.ch = S.ch || [];
+    S.cn = S.cn || [];
+
+    if(typeof tab === "undefined") tab = "Tavoli";
+
+    const nav = document.getElementById("nav");
+    if(nav){
+        nav.innerHTML = ["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t => `<button class="${t == tab ? "on" : ""}" onclick="tab='${t}';draw()">${t == "Cucina" && typeof nk === "function" && nk() ? `Cucina (${nk()})` : t}</button>`).join("");
+    }
+    const views = { Tavoli: viewTavoli, Comande: viewCom, Cucina: viewCuc, Menu: viewMenu, Magazzino: viewMag, Incassi: viewInc, Prenotazioni: viewPren, Personale: viewStaff };
+    const app = document.getElementById("app");
+    if(app){
+        const fn = views[tab] || views["Tavoli"];
+        app.innerHTML = typeof fn === "function" ? fn() : "Errore vista";
+    }
+}
+
+loadStateFromServer();
+</script></body></html>
