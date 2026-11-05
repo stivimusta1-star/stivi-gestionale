@@ -21,7 +21,14 @@ app.get('/api/state', (req, res) => {
     }
   });
 });
-
+app.post('/api/state', (req, res) => {
+  fs.writeFile(DATA_FILE, JSON.stringify(req.body, null, 2), (err) => {
+    if (err) {
+      return res.status(500).json({ error: 'Errore salvataggio dati' });
+    }
+    res.json({ success: true });
+  });
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server avviato sulla porta ${PORT}`);
