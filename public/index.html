@@ -228,7 +228,7 @@ function shareTk(){try{navigator.share({title:"Comanda",text:tkTxt(S.tk.find(x=>
 function cpTk(b){const t=document.createElement("textarea");t.value=tkTxt(S.tk.find(x=>x.id==ptk));document.body.appendChild(t);t.select();let ok=false;try{ok=document.execCommand("copy")}catch(e){}if(!ok){try{navigator.clipboard.writeText(t.value);ok=true}catch(e){}}t.remove();b.textContent=ok?"Copiato ✓":"Copia non riuscita"}
 function tkHTML(x,big,act){return `<div class="card" style="${x.st=="nuovo"?"border:2px solid var(--ac)":"opacity:.6"}"><h2>Tavolo ${x.table} · ${hm(x.t)}${x.by?" · "+esc(x.by):""}</h2>${x.items.map(i=>`<div class="row"><span class="n" style="font-size:${big?20:16}px"><b>${i.q}×</b> ${esc(i.n)}</span><span class="mu">${i.c}</span></div>`).join("")}${act||""}</div>`}
 function viewCuc(){if(ptk){const x=S.tk.find(x=>x.id==ptk);if(x)return tkHTML(x,1)+`<div class="np" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">${navigator.share?'<button class="btn p" onclick="shareTk()">Condividi</button>':''}<button class="btn p" onclick="cpTk(this)">Copia</button><button class="btn" onclick="printRec()">Stampa</button><button class="btn" onclick="ptk=null;draw()">Indietro</button></div>`;ptk=null}
-const d=new Date().toDateString(),all=S.tk.filter(x=>new Date(x.t).toDateString()==d).sort((a,b)=>a.t-b.t),n=all.filter(x=>x.st=="nuovo"),p=all.filter(x=>x.st!="nuovo").reverse().slice(0,10);
+const d=new Date().toDateString(),all=(S.tk||[]).filter(x=>new Date(x.t).toDateString()==d).sort((a,b)=>a.t-b.t),n=all.filter(x=>x.st=="nuovo"),p=all.filter(x=>x.st!="nuovo").reverse().slice(0,10);
 return `<div class="kpi"><div>Da preparare<b>${n.length}</b></div><div>Pronte oggi<b>${all.length-n.length}</b></div></div><h2>Comande in arrivo</h2>`+(n.map(x=>tkHTML(x,1,`<div style="display:flex;gap:8px;margin-top:8px"><button class="btn p" style="flex:1" onclick="done(${x.id})">✓ Pronto</button>${navigator.share?'<button class="btn" onclick="shareId('+x.id+')">Condividi</button>':''}<button class="btn" onclick="ptk=${x.id};draw()">Stampa</button></div>`)).join("")||'<p class="mu">Nessuna comanda da preparare.</p>')+(p.length?'<h2>Già pronte</h2>'+p.map(x=>tkHTML(x)).join(""):"")}
 function viewCom(){const t=Object.entries(S.tables).filter(([k,o])=>o.items.length);
 return `<div class="kpi"><div>Tavoli aperti<b>${t.length}</b></div><div>Piatti in comanda<b>${t.reduce((a,[k,o])=>a+o.items.reduce((b,i)=>b+i.q,0),0)}</b></div></div><h2>Comande aperte</h2>`+(t.map(([k,o])=>`<div class="card"><h2>Tavolo ${k} · ${E(sub(o)+COPERTO*o.cov)}</h2>${o.items.map(i=>`<div class="row"><span>${i.q}× ${M(i.id)?esc(M(i.id).n):"?"}</span><span class="mu">${esc(i.by||"")}</span></div>`).join("")}</div>`).join("")||'<p class="mu">Nessuna comanda aperta.</p>')}
@@ -240,7 +240,7 @@ return `<div class="card"><h2>Conteggio del magazzino</h2><p class="mu">Inserisc
 function saveCnt(){const rows=[];document.querySelectorAll("input.cnt").forEach(el=>{if(el.value==="")return;const k=el.dataset.k,c=+el.value,id=k.slice(1),isI=k[0]=="i",g=isI?I(id):M(id);if(!g)return;const att=isI?g.q:g.s;rows.push({n:g.n,u:isI?g.u:(g.u||"pz"),att:Math.round(att*1000)/1000,cont:c,diff:Math.round((c-att)*1000)/1000});if(isI)g.q=c;else g.s=c});
 if(!rows.length){cntMsg="Inserisci almeno una quantità.";draw();return}
 S.cn.push({id:Date.now(),t:Date.now(),d:today(),rows});cnt=false;cntMsg="";save();draw()}
-function viewMag(){if(cnt)return cntHTML();const low=S.ing.filter(g=>g.q<=g.min),dir=S.menu.filter(m=>!(m.r&&m.r.length)&&m.s!=null).sort((a,b)=>CATS.indexOf(a.c)-CATS.indexOf(b.c));let h=cntBar();
+function viewMag(){if(cnt)return cntHTML();const low=(S.ing||[]).filter(g=>g.q<=g.min),dir=(S.menu||[]).filter(m=>!(m.r&&m.r.length)&&m.s!=null).sort((a,b)=>CATS.indexOf(a.c)-CATS.indexOf(b.c));let h=cntBar()}
 if(low.length)h+=`<div class="card low">⚠ Sotto scorta: ${low.map(g=>esc(g.n)).join(", ")}</div>`;
 h+=`<h2>Ingredienti</h2><div class="card">${S.ing.map(g=>`<div class="row"><span class="n">${esc(g.n)}<br><small>minimo ${g.min} ${g.u}</small></span><div class="q"><button onclick="setI(${g.id},-1)">−</button><b class="${g.q<=g.min?"low":""}">${+g.q.toFixed(2)} ${g.u}</b><button onclick="setI(${g.id},1)">+</button><button onclick="setI(${g.id},10)">+10</button></div></div>`).join("")||'<span class="mu">Nessun ingrediente</span>'}</div>`;
 h+=`<div class="card"><h2>Nuovo ingrediente</h2><div class="f"><input id="gn" class="w" placeholder="Nome"><select id="gu"><option>kg</option><option>l</option><option>pz</option></select><input id="gq" type="number" placeholder="Quantità"><input id="gm" type="number" placeholder="Minimo" class="w"><button class="btn p w" onclick="addIng()">Aggiungi</button></div></div>`;
@@ -258,7 +258,7 @@ if(S.ch.length)h+='<h2>Storico chiusure</h2><div class="card">'+S.ch.slice().sor
 return h}
 function closeDay(){const dk=today(),d=new Date().toDateString(),v=S.sales.filter(s=>new Date(s.t).toDateString()==d),o=pm(v),fo=+V("fc2")||0;if(V("cc")===""){chErr=1;draw();return}chErr=0;const att=fo+(o.Contanti||0);S.ch.push({id:Date.now(),d:dk,t:Date.now(),n:v.length,cov:v.reduce((a,s)=>a+s.cov,0),tot:v.reduce((a,s)=>a+s.tot,0),m:o,fondo:fo,att,cont:+V("cc"),diff:+V("cc")-att});save();draw()}
 function reopenDay(){const dk=today();S.ch=S.ch.filter(c=>c.d!=dk);save();draw()}
-function viewInc(){const d=new Date().toDateString(),v=S.sales.filter(s=>new Date(s.t).toDateString()==d),tot=v.reduce((a,s)=>a+s.tot,0),cov=v.reduce((a,s)=>a+s.cov,0);
+function viewInc(){const d=new Date().toDateString(),v=(S.sales||[]).filter(s=>new Date(s.t).toDateString()==d),tot=v.reduce((a,s)=>a+s.tot,0),cov=v.reduce((a,s)=>a+s.cov,0);
 const bc={},bi={};v.forEach(s=>s.items.forEach(i=>{bc[i.c]=(bc[i.c]||0)+i.p*i.q;bi[i.n]=(bi[i.n]||0)+i.q}));
 const top=Object.entries(bi).sort((a,b)=>b[1]-a[1]).slice(0,5);
 let h=`<div class="kpi"><div>Incasso oggi<b>${E(tot)}</b></div><div>Conti chiusi<b>${v.length}</b></div><div>Coperti<b>${cov}</b></div><div>Scontrino medio<b>${E(v.length?tot/v.length:0)}</b></div></div>`;
@@ -292,8 +292,7 @@ S.tables = S.tables || [];
 S.mag = S.mag || [];
 S.pren = S.pren || [];
 S.inc = S.inc || []; 
-document.getElementById("nav").innerHTML=["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t=>`<button class="${t==tab?"on":""}" onclick="tab='${t}';draw()">${t=="Cucina"&&nk()?"Cucina ("+nk()+")":t}</button>`).join("");
-document.getElementById("app").innerHTML={Tavoli:viewTavoli,Comande:viewCom,Cucina:viewCuc,Menu:viewMenu,Magazzino:viewMag,Incassi:viewInc,Prenotazioni:viewPren,Personale:viewStaff}[tab]()}
-
+document.getElementById("nav").innerHTML=["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t=>`<button class="${t==(typeof tab!=="undefined"?tab:"")?"on":""}" onclick="tab='${t}';draw()">${t=="Cucina"&&typeof nk==="function"&&nk()?"Cucina ("+nk()+")":t}</button>`).join("");
+document.getElementById("app").innerHTML=typeof window[({Tavoli:viewTavoli,Comande:viewCom,Cucina:viewCuc,Menu:viewMenu,Magazzino:viewMag,Incassi:viewInc,Prenotazioni:viewPren,Personale:viewStaff}[typeof tab!=="undefined"?tab:"Tavoli"])]==="function"?({Tavoli:viewTavoli,Comande:viewCom,Cucina:viewCuc,Menu:viewMenu,Magazzino:viewMag,Incassi:viewInc,Prenotazioni:viewPren,Personale:viewStaff}[typeof tab!=="undefined"?tab:"Tavoli"]||(()=>""))():()=>"";
 loadStateFromSever();
 </script></body></html>
