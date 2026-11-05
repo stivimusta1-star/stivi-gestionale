@@ -292,7 +292,5 @@ S.tables = S.tables || [];
 S.mag = S.mag || [];
 S.pren = S.pren || [];
 S.inc = S.inc || []; 
-document.getElementById("nav").innerHTML=["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t=>`<button class="${t==(typeof tab!=="undefined"?tab:"")?"on":""}" onclick="tab='${t}';draw()">${t=="Cucina"&&typeof nk==="function"&&nk()?"Cucina ("+nk()+")":t}</button>`).join("");
-document.getElementById("app").innerHTML=typeof window[({Tavoli:viewTavoli,Comande:viewCom,Cucina:viewCuc,Menu:viewMenu,Magazzino:viewMag,Incassi:viewInc,Prenotazioni:viewPren,Personale:viewStaff}[typeof tab!=="undefined"?tab:"Tavoli"])]==="function"?({Tavoli:viewTavoli,Comande:viewCom,Cucina:viewCuc,Menu:viewMenu,Magazzino:viewMag,Incassi:viewInc,Prenotazioni:viewPren,Personale:viewStaff}[typeof tab!=="undefined"?tab:"Tavoli"]||(()=>""))():()=>"";
-loadStateFromSever();
-</script></body></html>
+document.getElementById("nav").innerHTML=["Tavoli","Comande","Cucina","Menu","Magazzino","Incassi","Prenotazioni","Personale"].map(t=>`<button class="${t==tab?"on":""}" onclick="tab='${t}';draw()">${t=="Cucina"&&typeof nk==="function"&&nk()?`Cucina (${nk()})`:t}</button>`).join("");
+document.getElementById("app").innerHTML=(window[ {Tavoli:viewTavoli, Comande:viewCom, Cucina:viewCuc, Menu:viewMenu, Magazzino:viewMag, Incassi:viewInc, Prenotazioni:viewPren, Personale:viewStaff}[tab] ]||(()=>""))();
