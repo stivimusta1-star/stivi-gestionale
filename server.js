@@ -1,87 +1,65 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
+// Server minimale per il gestionale (nessuna dipendenza da installare).
+// Variabili ambiente opzionali su Render:
+//   APP_USER e APP_PASS -> chiedono nome utente e password a chi apre il sito
+//   DATA_DIR            -> cartella del disco permanente (es. /var/data)
+const http = require("http");
+const fs = require("fs");
+const path = require("path");
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data.json');
+const DIR = process.env.DATA_DIR || __dirname;
+const FILE = path.join(DIR, "data.json");
+const USER = process.env.APP_USER || "";
+const PASS = process.env.APP_PASS || "";
 
-// Middleware di sistema
-app.use(express.json({ limit: '10mb' })); // Supporto sicuro per dati complessi (menu, magazzino, comande)
-app.use(express.static(path.join(__dirname, 'public')));
+let state = null;
+try { state = JSON.parse(fs.readFileSync(FILE, "utf8")); } catch (e) {}
 
-// Schema di default rigoroso (Contratto dati del gestionale)
-const getDefaultData = () => ({
-  res: [],
-  staff: [],
-  tks: [],
-  ch: [],
-  cms: [],
-  menu: [],
-  tables: [],
-  mag: [],
-  pren: [],
-  inc: []
-});
-
-// Rotta GET: Lettura protetta e auto-configurazione dello stato
-app.get('/api/state', (req, res) => {
+function persist() {
   try {
-    // Se il file data.json non esiste, lo crea automaticamente con lo schema base
-    if (!fs.existsSync(DATA_FILE)) {
-      const initialData = getDefaultData();
-      fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), 'utf8');
-      return res.json(initialData);
-    }
+    fs.writeFileSync(FILE + ".tmp", JSON.stringify(state));
+    fs.renameSync(FILE + ".tmp", FILE);
+  } catch (e) { console.error("Salvataggio non riuscito:", e.message); }
+}
 
-    fs.readFile(DATA_FILE, 'utf8', (err, fileContent) => {
-      if (err) {
-        console.error('[ERRORE LETTURA DB]:', err);
-        return res.status(500).json({ error: 'Impossibile leggere il database.' });
-      }
-      
-      try {
-        const parsedData = JSON.parse(fileContent);
-        // Merge strutturale difensivo: garantisce che nessuna chiave manchi mai
-        const mergedData = { ...getDefaultData(), ...parsedData };
-        return res.json(mergedData);
-      } catch (parseError) {
-        console.error('[ERRORE PARSING JSON - File corrotto o vuoto]:', parseError);
-        // Fallback di sicurezza per evitare crash se il file JSON è malformato
-        const fallbackData = getDefaultData();
-        return res.json(fallbackData);
-      }
-    });
-  } catch (criticalErr) {
-    console.error('[ERRORE CRITICO GET /api/state]:', criticalErr);
-    return res.status(500).json({ error: 'Errore interno del server.' });
+function autorizzato(req) {
+  if (!USER && !PASS) return true;
+  const h = req.headers.authorization || "";
+  if (!h.startsWith("Basic ")) return false;
+  const [u, ...p] = Buffer.from(h.slice(6), "base64").toString().split(":");
+  return u === USER && p.join(":") === PASS;
+}
+
+http.createServer((req, res) => {
+  if (!autorizzato(req)) {
+    res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Gestionale"' });
+    return res.end("Accesso riservato");
   }
-});
+  const url = req.url.split("?")[0];
 
-// Rotta POST: Persistenza sicura e validata dei dati
-app.post('/api/state', (req, res) => {
-  try {
-    if (!req.body || typeof req.body !== 'object') {
-      return res.status(400).json({ error: 'Payload non valido o vuoto.' });
+  if (url === "/api/state") {
+    if (req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return res.end(JSON.stringify(state || {}));
     }
-
-    // Assicura che i dati salvati mantengano sempre la struttura completa
-    const dataToSave = { ...getDefaultData(), ...req.body };
-
-    fs.writeFile(DATA_FILE, JSON.stringify(dataToSave, null, 2), 'utf8', (err) => {
-      if (err) {
-        console.error('[ERRORE SCRITTURA DB]:', err);
-        return res.status(500).json({ error: 'Impossibile salvare i dati.' });
-      }
-      return res.json({ success: true, message: 'Stato sincronizzato con successo.' });
-    });
-  } catch (criticalErr) {
-    console.error('[ERRORE CRITICO POST /api/state]:', criticalErr);
-    return res.status(500).json({ error: 'Errore interno durante il salvataggio.' });
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", c => { body += c; if (body.length > 20e6) req.destroy(); });
+      req.on("end", () => {
+        try { state = JSON.parse(body); persist(); res.writeHead(200); res.end("ok"); }
+        catch (e) { res.writeHead(400); res.end("dati non validi"); }
+      });
+      return;
+    }
   }
-});
 
-// Avvio del server su porta dinamica (Render) o fissa (locale)
-app.listen(PORT, () => {
-  console.log(`[PERLA DI MARE] Server operativo e in ascolto sulla porta ${PORT}`);
-});
+  if (req.method === "GET" && (url === "/" || url === "/index.html")) {
+    return fs.readFile(path.join(__dirname, "gestionale.html"), (err, data) => {
+      if (err) { res.writeHead(404); return res.end("gestionale.html mancante nel repository"); }
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
+      res.end(data);
+    });
+  }
+
+  res.writeHead(404);
+  res.end("Non trovato");
+}).listen(process.env.PORT || 3000, "0.0.0.0", () => console.log("Gestionale attivo"));
